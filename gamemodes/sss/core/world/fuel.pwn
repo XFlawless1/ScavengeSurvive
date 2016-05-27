@@ -25,7 +25,7 @@
 #include <YSI\y_hooks>
 
 #define MAX_FUEL_LOCATIONS	(78)
-#define FUEL_CAN_CAPACITY	(20)
+#define FUEL_CAN_CAPACITY	(20.0)
 
 
 enum E_FUEL_DATA
@@ -42,7 +42,7 @@ Float:		fuel_posZ
 
 new
 			fuel_Data[MAX_FUEL_LOCATIONS][E_FUEL_DATA],
-   Iterator:fuel_Index<MAX_FUEL_LOCATIONS>,
+Iterator:   fuel_Index<MAX_FUEL_LOCATIONS>,
 Timer:		fuel_RefuelTimer[MAX_PLAYERS],
 			fuel_CurrentFuelOutlet[MAX_PLAYERS],
 			fuel_CurrentlyRefuelling[MAX_PLAYERS];
@@ -127,9 +127,13 @@ hook OnPlayerKeyStateChange(playerid, newkeys, oldkeys)
 			{
 				if(IsPlayerInDynamicArea(playerid, fuel_Data[i][fuel_areaId]))
 				{
-					if(GetItemExtraData(itemid) < FUEL_CAN_CAPACITY)
+					if(Float:GetItemExtraData(itemid) < FUEL_CAN_CAPACITY)
 					{
 						StartRefuellingFuelCan(playerid, i);
+					}
+					else
+					{
+						ShowActionText(playerid, ls(playerid, "FUELCANFULL"), 3000);
 					}
 				}
 			}
@@ -191,30 +195,34 @@ timer RefuelCanUpdate[500](playerid)
 
 	new
 		itemid = GetPlayerItem(playerid),
-		amount,
+		Float:transfer,
+		Float:amount,
 		Float:px,
 		Float:py,
 		Float:pz;
 
-	amount = GetItemExtraData(itemid);
+	amount = Float:GetItemExtraData(itemid);
 
-	if(amount >= FUEL_CAN_CAPACITY || fuel_Data[fuel_CurrentFuelOutlet[playerid]][fuel_amount] <= 0.0 || GetItemType(itemid) != item_GasCan)
+	if(amount >= FUEL_CAN_CAPACITY
+	|| fuel_Data[fuel_CurrentFuelOutlet[playerid]][fuel_amount] <= 0.0
+	|| GetItemType(itemid) != item_GasCan)
 	{
 		StopRefuellingFuelCan(playerid);
 		return;
 	}
 
-
 	GetPlayerPos(playerid, px, py, pz);
 	SetPlayerFacingAngle(playerid, GetAngleToPoint(px, py, fuel_Data[fuel_CurrentFuelOutlet[playerid]][fuel_posX], fuel_Data[fuel_CurrentFuelOutlet[playerid]][fuel_posY]));
 
-	SetPlayerProgressBarValue(playerid, ActionBar, float(amount));
+	SetPlayerProgressBarValue(playerid, ActionBar, amount);
 	SetPlayerProgressBarMaxValue(playerid, ActionBar, FUEL_CAN_CAPACITY);
 	ShowPlayerProgressBar(playerid, ActionBar);
 	ApplyAnimation(playerid, "PED", "DRIVE_BOAT", 4.0, 1, 0, 0, 0, 0);
 
-	SetItemExtraData(itemid, amount + 1);
-	fuel_Data[fuel_CurrentFuelOutlet[playerid]][fuel_amount] -= 1.0;
+	transfer = (amount + 1.2 > 20.0) ? 20.0 - amount : 1.2;
+	SetItemArrayDataAtCell(itemid, _:(amount + transfer), LIQUID_ITEM_ARRAY_CELL_AMOUNT);
+	SetItemArrayDataAtCell(itemid, liquid_Petrol, LIQUID_ITEM_ARRAY_CELL_TYPE);
+	fuel_Data[fuel_CurrentFuelOutlet[playerid]][fuel_amount] -= transfer;
 
 	return;
 }
@@ -222,8 +230,16 @@ timer RefuelCanUpdate[500](playerid)
 
 StartRefuellingVehicle(playerid, vehicleid)
 {
-	if(GetItemType(GetPlayerItem(playerid)) != item_GasCan)
+	new itemid = GetPlayerItem(playerid);
+
+	if(GetItemType(itemid) != item_GasCan)
 		return 0;
+
+	if(GetItemArrayDataAtCell(itemid, LIQUID_ITEM_ARRAY_CELL_TYPE) != liquid_Petrol)
+	{
+		ShowActionText(playerid, ls(playerid, "FUELNOTPETR"), 3000);
+		return 0;
+	}
 
 	CancelPlayerMovement(playerid);
 	ApplyAnimation(playerid, "PED", "DRIVE_BOAT", 4.0, 1, 0, 0, 0, 0);
@@ -262,7 +278,8 @@ timer RefuelVehicleUpdate[500](playerid, vehicleid)
 
 	new
 		itemid = GetPlayerItem(playerid),
-		canfuel,
+		Float:canfuel,
+		Float:transfer,
 		Float:vehiclefuel,
 		Float:px,
 		Float:py,
@@ -271,10 +288,13 @@ timer RefuelVehicleUpdate[500](playerid, vehicleid)
 		Float:vy,
 		Float:vz;
 
-	canfuel = GetItemExtraData(itemid);
+	canfuel = Float:GetItemExtraData(itemid);
 	vehiclefuel = GetVehicleFuel(vehicleid);
 
-	if(vehiclefuel >= GetVehicleTypeMaxFuel(GetVehicleType(vehicleid)) || canfuel <= 0 || GetItemType(itemid) != item_GasCan || !IsPlayerInVehicleArea(playerid, vehicleid))
+	if(vehiclefuel >= GetVehicleTypeMaxFuel(GetVehicleType(vehicleid))
+	|| canfuel <= 0.0
+	|| GetItemType(itemid) != item_GasCan
+	|| !IsPlayerInVehicleArea(playerid, vehicleid))
 	{
 		StopRefuellingVehicle(playerid);
 		return;
@@ -288,8 +308,9 @@ timer RefuelVehicleUpdate[500](playerid, vehicleid)
 	GetVehiclePos(vehicleid, vx, vy, vz);
 	SetPlayerFacingAngle(playerid, GetAngleToPoint(px, py, vx, vy));
 
-	SetItemExtraData(itemid, canfuel - 1);
-	SetVehicleFuel(vehicleid, vehiclefuel + 1.0);
+	transfer = (canfuel - 0.8 < 0.0) ? canfuel : 0.8;
+	SetItemArrayDataAtCell(itemid, _:(canfuel - transfer), LIQUID_ITEM_ARRAY_CELL_AMOUNT);
+	SetVehicleFuel(vehicleid, vehiclefuel + transfer);
 
 	return;
 }
